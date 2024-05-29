@@ -47,7 +47,7 @@ run = config.get("run", {})
 RDIR = run["name"] + "/" if run.get("name") else ""
 countries = config["countries"]
 
-ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 5)
+ATLITE_NPROCESSES = config["atlite"].get("nprocesses", 1)
 
 
 wildcard_constraints:

@@ -4,7 +4,7 @@
 
 
 version: 0.0.1
-tutorial: true
+tutorial: false
 
 logging:
   level: INFO
