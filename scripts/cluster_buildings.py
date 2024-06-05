@@ -2,20 +2,21 @@
 import json
 import logging
 import os
+from collections import Counter
 
 import geopandas as gpd
 import numpy as np
+import pandas as pd
 from _helpers_dist import (
     configure_logging,
     sets_path_to_root,
     two_2_three_digits_country,
 )
+from shapely.geometry import shape
 from sklearn.cluster import KMeans
 
 _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
-
-import json
 
 
 def extract_points(input_file, output_file):
@@ -27,13 +28,20 @@ def extract_points(input_file, output_file):
     # Create new GeoJSON data with only 'id' and 'coordinates' properties
     new_data = {"type": "FeatureCollection", "features": []}
     for feature in data["features"]:
-        if feature["geometry"]["type"] == "Point":
+        if feature["geometry"]["type"] == "Polygon":
+            polygon = shape(feature["geometry"])
+            centroid = polygon.centroid
+            centroid_coordinates = [centroid.x, centroid.y]
             new_feature = {
                 "type": "Feature",
-                "properties": {"id": feature["properties"]["id"]},
+                "properties": {
+                    "id": feature["properties"]["id"],
+                    "tags.building": feature["properties"]["tags.building"],
+                },
                 "geometry": {
                     "type": feature["geometry"]["type"],
                     "coordinates": feature["geometry"]["coordinates"],
+                    "center_coordinates": centroid_coordinates,
                 },
             }
             new_data["features"].append(new_feature)
@@ -51,8 +59,8 @@ def get_central_points_geojson(input_filepath, output_filepath, n_clusters):
     # Extract coordinates of all points
     points = []
     for feature in data["features"]:
-        if feature["geometry"]["type"] == "Point":
-            points.append(feature["geometry"]["coordinates"])
+        if feature["geometry"]["type"] == "Polygon":
+            points.append(feature["geometry"]["center_coordinates"])
 
     # Convert points to NumPy array for use with scikit-learn
     points = np.array(points)
@@ -98,11 +106,9 @@ def get_central_points_geojson_with_buildings(
 
     # Extract coordinates of all points
     points = []
-    building_ids = []
     for feature in data["features"]:
-        if feature["geometry"]["type"] == "Point":
-            points.append(feature["geometry"]["coordinates"])
-            building_ids.append(feature["properties"]["id"])
+        if feature["geometry"]["type"] == "Polygon":
+            points.append(feature["geometry"]["center_coordinates"])
 
     # Convert points to NumPy array for use with scikit-learn
     points = np.array(points)
@@ -137,17 +143,46 @@ def get_central_points_geojson_with_buildings(
     # Assign each building to its corresponding cluster based on k-means label
     for i, label in enumerate(kmeans.labels_):
         feature = data["features"][i]
-        if feature["geometry"]["type"] == "Point":
+        if feature["geometry"]["type"] == "Polygon":
             cluster_id = label
             if "buildings" not in geojson["features"][cluster_id]["properties"]:
                 geojson["features"][cluster_id]["properties"]["buildings"] = []
             geojson["features"][cluster_id]["properties"]["buildings"].append(
-                feature["properties"]["id"]
+                feature["properties"]["tags.building"]
             )
 
     # Write central point GeoJSON data with buildings to file
     with open(output_filepath, "w") as f:
         json.dump(geojson, f)
+    print("c")
+
+
+def get_number_type_buildings(input_filepath, output_filepath):
+
+    with open(input_filepath, "r") as f:
+        data = json.load(f)
+
+    cluster_buildings_count = {}
+
+    for feature in data["features"]:
+        cluster = feature["properties"]["cluster"]
+        buildings = feature["properties"]["buildings"]
+
+        processed_buildings = []
+        for building in buildings:
+            if building is None:
+                processed_buildings.append("yes")
+            else:
+                processed_buildings.append(building)
+
+        if cluster not in cluster_buildings_count:
+            cluster_buildings_count[cluster] = Counter()
+
+        cluster_buildings_count[cluster].update(processed_buildings)
+
+    count = pd.DataFrame(cluster_buildings_count)
+    count.fillna(0, inplace=True)
+    count.to_excel(output_filepath)
 
 
 if __name__ == "__main__":
@@ -175,4 +210,9 @@ if __name__ == "__main__":
         snakemake.output["cleaned_buildings_geojson"],
         snakemake.output["clusters_with_buildings"],
         snakemake.config["buildings"]["n_clusters"],
+    )
+
+    get_number_type_buildings(
+        snakemake.output["clusters_with_buildings"],
+        snakemake.output["number_buildings_type"],
     )
