@@ -195,6 +195,7 @@ rule cluster_buildings:
         cleaned_buildings_geojson="resources/buildings/cleaned_buildings.geojson",
         clusters="resources/buildings/clustered_buildings.geojson",
         clusters_with_buildings="resources/buildings/cluster_with_buildings.geojson",
+        number_buildings_type="resources/buildings/number_buildings_type.xlsx",
     log:
         "logs/cluster_buildings.log",
     benchmark:
