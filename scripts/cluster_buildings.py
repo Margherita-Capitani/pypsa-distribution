@@ -12,7 +12,7 @@ from _helpers_dist import (
     sets_path_to_root,
     two_2_three_digits_country,
 )
-from shapely.geometry import shape
+from shapely.geometry import Point, shape
 from sklearn.cluster import KMeans
 
 _logger = logging.getLogger(__name__)
@@ -20,169 +20,108 @@ _logger.setLevel(logging.INFO)
 
 
 def extract_points(input_file, output_file):
-    # Load GeoJSON data from file
-
-    with open(input_file, "r") as f:
-        data = json.load(f)
-
-    # Create new GeoJSON data with only 'id' and 'coordinates' properties
-    new_data = {"type": "FeatureCollection", "features": []}
-    for feature in data["features"]:
-        if feature["geometry"]["type"] == "Polygon":
-            polygon = shape(feature["geometry"])
-            centroid = polygon.centroid
-            centroid_coordinates = [centroid.x, centroid.y]
-            new_feature = {
-                "type": "Feature",
-                "properties": {
-                    "id": feature["properties"]["id"],
-                    "tags.building": feature["properties"]["tags.building"],
-                },
-                "geometry": {
-                    "type": feature["geometry"]["type"],
-                    "coordinates": feature["geometry"]["coordinates"],
-                    "center_coordinates": centroid_coordinates,
-                },
-            }
-            new_data["features"].append(new_feature)
-
-    # Write new GeoJSON data to file
-    with open(output_file, "w") as f:
-        json.dump(new_data, f)
+    microgrid_buildings = gpd.read_file(input_file)
+    microgrid_buildings.rename(columns={"tags.building": "tags_building"}, inplace=True)
+    features = []
+    for row in microgrid_buildings.itertuples():
+        if row.Type == "area":
+            features.append(
+                {
+                    "properties": {
+                        "id": row.id,
+                        "type": row.Type,
+                        "tags_building": row.tags_building,
+                    },
+                    "geometry": row.geometry,
+                }
+            )
+    buildings_geodataframe = gpd.GeoDataFrame.from_features(features)
+    buildings_geodataframe.to_file(output_file)
 
 
 def get_central_points_geojson(input_filepath, output_filepath, n_clusters):
-    # Load GeoJSON data from file
-    with open(input_filepath, "r") as f:
-        data = json.load(f)
+    microgrid_buildings = gpd.read_file(input_filepath)
+    centroids_building = [
+        (row.geometry.centroid.x, row.geometry.centroid.y)
+        for row in microgrid_buildings.itertuples()
+    ]
+    microgrid_buildings["centroid_coordinates"] = centroids_building
 
-    # Extract coordinates of all points
-    points = []
-    for feature in data["features"]:
-        if feature["geometry"]["type"] == "Polygon":
-            points.append(feature["geometry"]["center_coordinates"])
-
-    # Convert points to NumPy array for use with scikit-learn
-    points = np.array(points)
-
-    # Perform k-means clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(points)
-
-    # Compute centroids of each cluster
+    centroids_building = np.array(centroids_building)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(centroids_building)
     centroids = kmeans.cluster_centers_
 
-    # Select most central point in each cluster
     central_points = []
     for i in range(kmeans.n_clusters):
-        cluster_points = points[kmeans.labels_ == i]
+        cluster_points = centroids_building[kmeans.labels_ == i]
         distances = np.linalg.norm(cluster_points - centroids[i], axis=1)
         central_point_idx = np.argmin(distances)
         central_points.append(cluster_points[central_point_idx])
 
-    # Create GeoJSON feature for each central point
-    features = []
+    central_features = []
     for i, central_point in enumerate(central_points):
-        feature = {
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": central_point.tolist()},
-            "properties": {"cluster": i},
-        }
-        features.append(feature)
-
-    # Create GeoJSON object with all central point features
-    geojson = {"type": "FeatureCollection", "features": features}
-
-    # Write central point GeoJSON data to file
-    with open(output_filepath, "w") as f:
-        json.dump(geojson, f)
+        central_features.append(
+            {
+                "geometry": Point(central_point),
+                "cluster": i,
+            }
+        )
+    central_features = gpd.GeoDataFrame(central_features)
+    central_features.to_file(output_filepath)
 
 
 def get_central_points_geojson_with_buildings(
     input_filepath, output_filepath, n_clusters
 ):
-    # Load GeoJSON data from file
-    with open(input_filepath, "r") as f:
-        data = json.load(f)
+    cleaned_buildings = gpd.read_file(input_filepath)
 
-    # Extract coordinates of all points
-    points = []
-    for feature in data["features"]:
-        if feature["geometry"]["type"] == "Polygon":
-            points.append(feature["geometry"]["center_coordinates"])
-
-    # Convert points to NumPy array for use with scikit-learn
-    points = np.array(points)
-
-    # Perform k-means clustering
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(points)
-
-    # Compute centroids of each cluster
+    centroids_building = [
+        (row.geometry.centroid.x, row.geometry.centroid.y)
+        for row in cleaned_buildings.itertuples()
+    ]
+    centroids_building = np.array(centroids_building)
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(centroids_building)
     centroids = kmeans.cluster_centers_
 
-    # Select most central point in each cluster
     central_points = []
     for i in range(kmeans.n_clusters):
-        cluster_points = points[kmeans.labels_ == i]
+        cluster_points = centroids_building[kmeans.labels_ == i]
         distances = np.linalg.norm(cluster_points - centroids[i], axis=1)
         central_point_idx = np.argmin(distances)
         central_points.append(cluster_points[central_point_idx])
 
-    # Create GeoJSON feature for each central point
-    features = []
+    central_features = []
     for i, central_point in enumerate(central_points):
-        feature = {
-            "type": "Feature",
-            "geometry": {"type": "Point", "coordinates": central_point.tolist()},
-            "properties": {"cluster": i},
-        }
-        features.append(feature)
+        central_features.append(
+            {"geometry": Point(central_point), "cluster": i, "buildings": []}
+        )
+    central_gdf = gpd.GeoDataFrame(central_features)
 
-    # Create GeoJSON object with all central point features
-    geojson = {"type": "FeatureCollection", "features": features}
-
-    # Assign each building to its corresponding cluster based on k-means label
     for i, label in enumerate(kmeans.labels_):
-        feature = data["features"][i]
-        if feature["geometry"]["type"] == "Polygon":
+        feature = cleaned_buildings.iloc[i]
+        if feature.geometry.type == "Polygon":
             cluster_id = label
-            if "buildings" not in geojson["features"][cluster_id]["properties"]:
-                geojson["features"][cluster_id]["properties"]["buildings"] = []
-            geojson["features"][cluster_id]["properties"]["buildings"].append(
-                feature["properties"]["tags.building"]
-            )
+            building_tag = feature["tags_building"]
+            central_gdf.at[cluster_id, "buildings"].append(building_tag)
 
-    # Write central point GeoJSON data with buildings to file
-    with open(output_filepath, "w") as f:
-        json.dump(geojson, f)
-    print("c")
+    central_gdf["buildings"] = central_gdf["buildings"].apply(json.dumps)
+    central_gdf.to_file(output_filepath, driver="GeoJSON")
 
 
 def get_number_type_buildings(input_filepath, output_filepath):
-
-    with open(input_filepath, "r") as f:
-        data = json.load(f)
-
-    cluster_buildings_count = {}
-
-    for feature in data["features"]:
-        cluster = feature["properties"]["cluster"]
-        buildings = feature["properties"]["buildings"]
-
-        processed_buildings = []
-        for building in buildings:
-            if building is None:
-                processed_buildings.append("yes")
-            else:
-                processed_buildings.append(building)
-
-        if cluster not in cluster_buildings_count:
-            cluster_buildings_count[cluster] = Counter()
-
-        cluster_buildings_count[cluster].update(processed_buildings)
-
-    count = pd.DataFrame(cluster_buildings_count)
-    count.fillna(0, inplace=True)
-    count.to_excel(output_filepath)
+    cleaned_buildings = gpd.read_file(input_filepath)
+    conteggi = []
+    for row in cleaned_buildings.itertuples():
+        building_tag = row.buildings
+        building_tag = json.loads(building_tag.replace("'", '"'))
+        building_tag = pd.Series(building_tag)
+        count = building_tag.value_counts()
+        conteggi.append(count)
+    counts = pd.DataFrame(conteggi).fillna(0).astype(int)
+    counts["cluster"] = cleaned_buildings["cluster"].values
+    counts.set_index("cluster", inplace=True)
+    counts.to_excel(output_filepath)
+    print("fino a qui tutto bene")
 
 
 if __name__ == "__main__":
