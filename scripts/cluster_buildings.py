@@ -89,7 +89,6 @@ def get_central_points_geojson_with_buildings(
     input_filepath, output_filepath, n_clusters
 ):
     cleaned_buildings = gpd.read_file(input_filepath)
-
     centroids_building = [
         (row.geometry.centroid.x, row.geometry.centroid.y)
         for row in cleaned_buildings.itertuples()
@@ -105,35 +104,39 @@ def get_central_points_geojson_with_buildings(
         central_point_idx = np.argmin(distances)
         central_points.append(cluster_points[central_point_idx])
 
-    central_features = []
-    for i, central_point in enumerate(central_points):
-        central_features.append(
-            {"geometry": Point(central_point), "cluster": i, "buildings": []}
-        )
-    central_gdf = gpd.GeoDataFrame(central_features)
-
-    for i, label in enumerate(kmeans.labels_):
-        feature = cleaned_buildings.iloc[i]
-        if feature.geometry.type == "Polygon":
-            cluster_id = label
-            building_tag = feature["tags_building"]
-            central_gdf.at[cluster_id, "buildings"].append(building_tag)
-
-    central_gdf["buildings"] = central_gdf["buildings"].apply(json.dumps)
-    central_gdf.to_file(output_filepath, driver="GeoJSON")
+    features = []
+    for i, row in enumerate(cleaned_buildings.itertuples()):
+        if row.geometry.type == "Polygon":
+            cluster_id = kmeans.labels_[i]
+            features.append(
+                {
+                    "properties": {
+                        "id": row.Index,
+                        "cluster_id": cluster_id,
+                        "tags_building": row.tags_building,
+                        "area": row.area,
+                    },
+                    "geometry": row.geometry,
+                }
+            )
+    buildings_geodataframe = gpd.GeoDataFrame.from_features(features)
+    buildings_geodataframe.to_file(output_filepath)
 
 
 def get_number_type_buildings(input_filepath, output_filepath):
-    cleaned_buildings = gpd.read_file(input_filepath)
-    conteggi = []
-    for row in cleaned_buildings.itertuples():
-        building_tag = row.buildings
-        building_tag = json.loads(building_tag.replace("'", '"'))
+    buildings_geodataframe = gpd.read_file(input_filepath)
+
+    grouped_buildings = buildings_geodataframe.groupby("cluster_id")
+    clusters = np.sort(buildings_geodataframe["cluster_id"].unique())
+    counts = []
+    for cluster in clusters:
+        cluster_buildings = pd.DataFrame(grouped_buildings.get_group(cluster))
+        building_tag = cluster_buildings["tags_building"]
         building_tag = pd.Series(building_tag)
         count = building_tag.value_counts()
-        conteggi.append(count)
-    counts = pd.DataFrame(conteggi).fillna(0).astype(int)
-    counts["cluster"] = cleaned_buildings["cluster"].values
+        counts.append(count)
+    counts = pd.DataFrame(counts).fillna(0).astype(int)
+    counts["cluster"] = clusters
     counts.set_index("cluster", inplace=True)
     counts.to_excel(output_filepath)
 
