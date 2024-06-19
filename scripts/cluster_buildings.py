@@ -19,24 +19,25 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
-def extract_points(input_file, output_file):
+def extract_points(input_file, output_file, crs):
     microgrid_buildings = gpd.read_file(input_file)
     microgrid_buildings.rename(columns={"tags.building": "tags_building"}, inplace=True)
     features = []
     for row in microgrid_buildings.itertuples():
-        if row.Type == "area":
+        if row.geometry.type == "Polygon":
             features.append(
                 {
                     "properties": {
                         "id": row.id,
-                        "type": row.Type,
                         "tags_building": row.tags_building,
                     },
                     "geometry": row.geometry,
                 }
             )
     buildings_geodataframe = gpd.GeoDataFrame.from_features(features)
-    microgrid_buildings = microgrid_buildings.to_crs(epsg=32633)
+    microgrid_buildings = microgrid_buildings.to_crs(
+        crs
+    )  # mettilo come parametro alla funzione tramite config. in Pypsa-earth c'è come metric-crs
     area = microgrid_buildings.geometry.area
     area = pd.Series(area)
     buildings_geodataframe["area"] = area
@@ -151,9 +152,12 @@ if __name__ == "__main__":
 
     configure_logging(snakemake)
 
+    crs = snakemake.params.crs["area_crs"]
+
     extract_points(
         snakemake.input["buildings_geojson"],
         snakemake.output["cleaned_buildings_geojson"],
+        crs,
     )
 
     buildings_classification(
