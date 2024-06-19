@@ -189,6 +189,8 @@ rule clean_earth_osm_data:
 
 
 rule cluster_buildings:
+    params:
+        crs=config["crs"],
     input:
         buildings_geojson="resources/buildings/microgrid_building.geojson",
     output:
