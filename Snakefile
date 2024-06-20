@@ -108,6 +108,7 @@ rule build_demand:
             for user_file in Path("data/ramp/").glob("[a-zA-Z0-9]*.xlsx")
         },
         sample_profile=PROFILE,
+        building_csv="resources/buildings/number_buildings_type.csv",
         create_network="networks/base.nc",
         microgrid_shapes="resources/shapes/microgrid_shapes.geojson",
         clusters_with_buildings="resources/buildings/cluster_with_buildings.geojson",
