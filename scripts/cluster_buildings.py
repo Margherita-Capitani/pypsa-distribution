@@ -19,7 +19,7 @@ _logger = logging.getLogger(__name__)
 _logger.setLevel(logging.INFO)
 
 
-def extract_points(input_file, output_file, crs):
+def buildings_classification(input_file, crs, house_area_limit):
     microgrid_buildings = gpd.read_file(input_file)
     microgrid_buildings.rename(columns={"tags.building": "tags_building"}, inplace=True)
     features = []
@@ -35,28 +35,27 @@ def extract_points(input_file, output_file, crs):
                 }
             )
     buildings_geodataframe = gpd.GeoDataFrame.from_features(features)
-    microgrid_buildings = microgrid_buildings.to_crs(
-        crs
-    )  # mettilo come parametro alla funzione tramite config. in Pypsa-earth c'è come metric-crs
-    area = microgrid_buildings.geometry.area
-    area = pd.Series(area)
-    buildings_geodataframe["area"] = area
-    buildings_geodataframe.to_file(output_file)
-
-
-def buildings_classification(input_path, output_path):
-    cleaned_buildings = gpd.read_file(input_path)
-    for index, row in cleaned_buildings.iterrows():
+    microgrid_buildings = microgrid_buildings.to_crs(crs)
+    area_m2 = microgrid_buildings.geometry.area
+    area_m2 = pd.Series(area_m2)
+    buildings_geodataframe["area_m2"] = area_m2
+    for index, row in buildings_geodataframe.iterrows():
         if row.tags_building == "yes":
-            if row.area < 200:
-                cleaned_buildings.at[index, "tags_building"] = "house"
+            if row.area_m2 < house_area_limit:
+                buildings_geodataframe.loc[index, "tags_building"] = "house"
             else:
-                cleaned_buildings.at[index, "tags_building"] = "yes"
-    cleaned_buildings.to_file(output_path)
+                buildings_geodataframe.loc[index, "tags_building"] = "yes"
+    return buildings_geodataframe
+    # buildings_geodataframe.to_file(output_file)
 
 
-def get_central_points_geojson(input_filepath, output_filepath, n_clusters):
-    microgrid_buildings = gpd.read_file(input_filepath)
+def get_central_points_geojson(
+    input_filepath, output_filepath, n_clusters, crs, house_area_limit
+):
+    microgrid_buildings = buildings_classification(
+        input_filepath, crs, house_area_limit
+    )
+    # microgrid_buildings = gpd.read_file(input_filepath)
     centroids_building = [
         (row.geometry.centroid.x, row.geometry.centroid.y)
         for row in microgrid_buildings.itertuples()
@@ -87,9 +86,10 @@ def get_central_points_geojson(input_filepath, output_filepath, n_clusters):
 
 
 def get_central_points_geojson_with_buildings(
-    input_filepath, output_filepath, n_clusters
+    input_filepath, output_filepath, n_clusters, crs, house_area_limit
 ):
-    cleaned_buildings = gpd.read_file(input_filepath)
+    cleaned_buildings = buildings_classification(input_filepath, crs, house_area_limit)
+    # cleaned_buildings = gpd.read_file(input_filepath)
     centroids_building = [
         (row.geometry.centroid.x, row.geometry.centroid.y)
         for row in cleaned_buildings.itertuples()
@@ -115,7 +115,7 @@ def get_central_points_geojson_with_buildings(
                         "id": row.Index,
                         "cluster_id": cluster_id,
                         "tags_building": row.tags_building,
-                        "area": row.area,
+                        "area_m2": row.area_m2,
                     },
                     "geometry": row.geometry,
                 }
@@ -139,7 +139,7 @@ def get_number_type_buildings(input_filepath, output_filepath):
     counts = pd.DataFrame(counts).fillna(0).astype(int)
     counts["cluster"] = clusters
     counts.set_index("cluster", inplace=True)
-    counts.to_excel(output_filepath)
+    counts.to_csv(output_filepath)
 
 
 if __name__ == "__main__":
@@ -153,28 +153,22 @@ if __name__ == "__main__":
     configure_logging(snakemake)
 
     crs = snakemake.params.crs["area_crs"]
-
-    extract_points(
-        snakemake.input["buildings_geojson"],
-        snakemake.output["cleaned_buildings_geojson"],
-        crs,
-    )
-
-    buildings_classification(
-        snakemake.output["cleaned_buildings_geojson"],
-        snakemake.output["cleaned_buildings_update"],
-    )
+    house_area_limit = snakemake.params.house_area_limit["area_limit"]
 
     get_central_points_geojson(
-        snakemake.output["cleaned_buildings_update"],
+        snakemake.input["buildings_geojson"],
         snakemake.output["clusters"],
         snakemake.config["buildings"]["n_clusters"],
+        crs,
+        house_area_limit,
     )
 
     get_central_points_geojson_with_buildings(
-        snakemake.output["cleaned_buildings_update"],
+        snakemake.input["buildings_geojson"],
         snakemake.output["clusters_with_buildings"],
         snakemake.config["buildings"]["n_clusters"],
+        crs,
+        house_area_limit,
     )
 
     get_number_type_buildings(

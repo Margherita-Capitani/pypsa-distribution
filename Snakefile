@@ -191,14 +191,13 @@ rule clean_earth_osm_data:
 rule cluster_buildings:
     params:
         crs=config["crs"],
+        house_area_limit=config["house_area_limit"],
     input:
         buildings_geojson="resources/buildings/microgrid_building.geojson",
     output:
-        cleaned_buildings_geojson="resources/buildings/cleaned_buildings.geojson",
-        cleaned_buildings_update="resources/buildings/cleaned_buildings_update.geojson",
         clusters="resources/buildings/clustered_buildings.geojson",
         clusters_with_buildings="resources/buildings/cluster_with_buildings.geojson",
-        number_buildings_type="resources/buildings/number_buildings_type.xlsx",
+        number_buildings_type="resources/buildings/number_buildings_type.csv",
     log:
         "logs/cluster_buildings.log",
     benchmark:
