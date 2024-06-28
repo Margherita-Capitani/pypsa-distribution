@@ -102,6 +102,8 @@ rule ramp_build_demand_profile:
 
 
 rule build_demand:
+    params:
+        tier=config["tier"],
     input:
         **{
             f"profile_{user_file.stem}": f"resources/ramp/daily_type_demand_{user_file.stem}.xlsx"
@@ -112,8 +114,15 @@ rule build_demand:
         create_network="networks/base.nc",
         microgrid_shapes="resources/shapes/microgrid_shapes.geojson",
         clusters_with_buildings="resources/buildings/cluster_with_buildings.geojson",
+        profile_tier1="resources/ramp/daily_type_demand_Tier1.xlsx",
+        profile_tier2="resources/ramp/daily_type_demand_Tier2.xlsx",
+        profile_tier3="resources/ramp/daily_type_demand_Tier3.xlsx",
+        profile_tier4="resources/ramp/daily_type_demand_Tier4.xlsx",
+        profile_tier5="resources/ramp/daily_type_demand_Tier5.xlsx",
     output:
         electric_load="resources/demand/microgrid_load.csv",
+        electric_load_1="resources/demand/microgrid_load_1.csv",
+        electric_load_2="resources/demand/microgrid_load_2.csv",
     log:
         "logs/build_demand.log",
     benchmark:

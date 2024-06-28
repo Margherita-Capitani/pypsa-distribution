@@ -44,6 +44,9 @@ snapshots:
 ramp:
   days: 365
 
+tier:
+  tier_percent: [0.3, 0.2, 0.2, 0.1, 0.15, 0.05]
+
 house_area_limit:
   area_limit: 255
 

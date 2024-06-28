@@ -275,9 +275,9 @@ def calculate_load_ramp(
     ]
 
     for i, demand_tier in enumerate(demand_tiers, start=1):
-        mean_column_name = f"bus_{i}"
+        mean_column_name = f"tier_{i}"
         mean_demand_tier_df[mean_column_name] = demand_tier["mean"]
-    mean_demand_tier_df.insert(0, "bus_0", np.zeros(len(mean_demand_tier_df)))
+    mean_demand_tier_df.insert(0, "tier_0", np.zeros(len(mean_demand_tier_df)))
 
     hours_index = pd.date_range(
         start="00:00:00", periods=len(mean_demand_tier_df), freq="H", normalize=True
@@ -288,65 +288,48 @@ def calculate_load_ramp(
     std_demand_tier_df = pd.DataFrame()
 
     for i, demand_tier in enumerate(demand_tiers, start=1):
-        mean_column_name = f"bus_{i}"
+        mean_column_name = f"tier_{i}"
         std_demand_tier_df[mean_column_name] = demand_tier["std"]
-    std_demand_tier_df.insert(0, "bus_0", np.zeros(len(mean_demand_tier_df)))
+    std_demand_tier_df.insert(0, "tier_0", np.zeros(len(mean_demand_tier_df)))
 
     std_demand_tier_df.index = hours_index.time
 
     result_dict = {}
-    for k in range(len(tier_pop_df)):
-        pop_cluster = tier_pop_df.iloc[k, :]
-        for j in range(len(pop_cluster)):
-            num_iterations = int(pop_cluster[j])
-            num_rows = len(mean_demand_tier_df)
-            num_columns = num_iterations
-            loads = np.zeros((num_rows, num_columns))
-            for i in range(num_iterations):
-                mean_load_person = mean_demand_tier_df.iloc[:, j].values
-                load_person = mean_load_person
-                loads[:, i] = load_person
-            results_df = pd.DataFrame(loads)
+    for k in range(len(tier_pop_df)):  # Itero sui cluster
+        pop_cluster = tier_pop_df.iloc[k, :]  # Seleziono tutto i tier per quel cluster
+        nome_dataframe = f"bus_{k}"
+        load_df = pd.DataFrame()
+        for j in range(len(pop_cluster)):  # Itero su tutti i tier per quel cluster
+            n_person = int(pop_cluster[j])
+            mean_load_person = mean_demand_tier_df.iloc[:, j].values
+            total_load = pd.Series(n_person * mean_load_person)
+            load_df[f"tier_{j}"] = total_load
 
-            nome_dataframe = f"person_load_cluster_{k}_tier_{j}"
-            result_dict[nome_dataframe] = results_df
+        result_dict[nome_dataframe] = load_df
 
-    total_loads_cluster_tier_dict = {}
-    for k in range(len(tier_pop_df)):
-        key_cluster = f"{k}"
-        total_loads_cluster_tier_dict[key_cluster] = {}
+    tot_result_dict = {}
+    for key in result_dict:
+        nome_dataframe = f"{key}"
+        load = result_dict[key]
+        load_tot = pd.DataFrame(load.sum(axis=1))
+        load_tot.rename(columns={0: key}, inplace=True)
+        tot_result_dict[nome_dataframe] = load_tot
 
-        for j in range(len(pop_cluster)):
-            key_tier = f"{j}"
-            load = result_dict[f"person_load_cluster_{key_cluster}_tier_{key_tier}"]
-            load_tot = load.sum(axis=1)
-            total_loads_df = pd.DataFrame(
-                load_tot, columns=[f"bus_{key_cluster}_tier_{key_tier}"]
-            )
-
-            total_loads_cluster_tier_dict[key_cluster][key_tier] = total_loads_df
-
-    total_loads_cluster = {}
-    for k in range(len(tier_pop_df)):
-        key_cluster = str(k)
-        df0 = total_loads_cluster_tier_dict[key_cluster]["0"].values
-        df1 = total_loads_cluster_tier_dict[key_cluster]["1"].values
-        df2 = total_loads_cluster_tier_dict[key_cluster]["2"].values
-        df3 = total_loads_cluster_tier_dict[key_cluster]["3"].values
-        df4 = total_loads_cluster_tier_dict[key_cluster]["4"].values
-        df5 = total_loads_cluster_tier_dict[key_cluster]["5"].values
-
-        total_load = pd.DataFrame(
-            df0 + df1 + df2 + df3 + df4 + df5, columns=[f"bus_{k}"]
-        )
-        total_loads_cluster[f"bus_{k}"] = total_load
-
-    # Creo un DataFRame unico per ogni cluster.
     tot_loads_df = pd.DataFrame()
-    for key, cluster_load in total_loads_cluster.items():
+    for key, cluster_load in tot_result_dict.items():
         tot_loads_df = pd.concat([tot_loads_df, cluster_load], axis=1)
 
-    tot_loads_df.to_csv(output_path_csv)
+    date_range = pd.date_range(start="2013-01-01", end="2013-12-31", freq="D")
+    yearly_mean_demand_tier_df = pd.concat(
+        [tot_loads_df] * len(date_range), ignore_index=True
+    )
+    date_time_index = pd.date_range(
+        start="2013-01-01", end="2013-12-31 23:00:00", freq="H"
+    )
+    yearly_mean_demand_tier_df.index = date_time_index
+    yearly_mean_demand_tier_df.to_csv(output_path_csv)
+
+    print("fino a qui tutto bene")
 
 
 def calculate_load_ramp_std(
@@ -408,11 +391,10 @@ def calculate_load_ramp_std(
         demand_tier_4,
         demand_tier_5,
     ]
-
     for i, demand_tier in enumerate(demand_tiers, start=1):
-        mean_column_name = f"bus_{i}"
+        mean_column_name = f"tier_{i}"
         mean_demand_tier_df[mean_column_name] = demand_tier["mean"]
-    mean_demand_tier_df.insert(0, "bus_0", np.zeros(len(mean_demand_tier_df)))
+    mean_demand_tier_df.insert(0, "tier_0", np.zeros(len(mean_demand_tier_df)))
 
     hours_index = pd.date_range(
         start="00:00:00", periods=len(mean_demand_tier_df), freq="H", normalize=True
@@ -423,66 +405,43 @@ def calculate_load_ramp_std(
     std_demand_tier_df = pd.DataFrame()
 
     for i, demand_tier in enumerate(demand_tiers, start=1):
-        mean_column_name = f"bus_{i}"
+        mean_column_name = f"tier_{i}"
         std_demand_tier_df[mean_column_name] = demand_tier["std"]
-    std_demand_tier_df.insert(0, "bus_0", np.zeros(len(mean_demand_tier_df)))
+    std_demand_tier_df.insert(0, "tier_0", np.zeros(len(mean_demand_tier_df)))
 
     std_demand_tier_df.index = hours_index.time
 
     result_dict = {}
-    for k in range(len(tier_pop_df)):
-        pop_cluster = tier_pop_df.iloc[k, :]
-        for j in range(len(pop_cluster)):
-            num_iterations = int(pop_cluster[j])
-            num_rows = len(mean_demand_tier_df)
-            num_columns = num_iterations
-            loads = np.zeros((num_rows, num_columns))
-            for i in range(num_iterations):
-                mean_load_person = mean_demand_tier_df.iloc[:, j].values
-                std_load_person = np.random.normal(
-                    0, mean_demand_tier_df.iloc[:, j].values[:num_rows]
-                )
-                load_person = mean_load_person + std_load_person
-                loads[:, i] = load_person
-            results_df = pd.DataFrame(loads)
+    for k in range(len(tier_pop_df)):  # Itero sui cluster
+        pop_cluster = tier_pop_df.iloc[k, :]  # Seleziono tutto i tier per quel cluster
+        nome_dataframe = f"bus_{k}"
+        load_df = pd.DataFrame()
+        std_df = pd.DataFrame()
+        for j in range(len(pop_cluster)):  # Itero su tutti i tier per quel cluster
+            n_person = int(pop_cluster[j])
+            mean_load_person = mean_demand_tier_df.iloc[:, j].values
+            mean_load = pd.Series(n_person * mean_load_person)
 
-            nome_dataframe = f"person_load_cluster_{k}_tier_{j}"
-            result_dict[nome_dataframe] = results_df
+            sqrt_n_person = np.sqrt(n_person)
+            std_load_person = std_demand_tier_df.iloc[:, j].values
+            std_load = np.random.normal(0, std_load_person) * sqrt_n_person
+            std_total = pd.Series(std_load)
 
-    total_loads_cluster_tier_dict = {}
-    for k in range(len(tier_pop_df)):
-        key_cluster = f"{k}"
-        total_loads_cluster_tier_dict[key_cluster] = (
-            {}
-        )  # Create a nested dictionary for the current key_cluster
+            total_load = pd.Series(mean_load.values + std_total.values)
+            load_df[f"tier_{j}"] = total_load
 
-        for j in range(len(pop_cluster)):
-            key_tier = f"{j}"
-            load = result_dict[f"person_load_cluster_{key_cluster}_tier_{key_tier}"]
-            load_tot = load.sum(axis=1)
-            total_loads_df = pd.DataFrame(
-                load_tot, columns=[f"bus_{key_cluster}_tier_{key_tier}"]
-            )
+        result_dict[nome_dataframe] = load_df
 
-            total_loads_cluster_tier_dict[key_cluster][key_tier] = total_loads_df
-
-    total_loads_cluster = {}
-    for k in range(len(tier_pop_df)):
-        key_cluster = str(k)
-        df0 = total_loads_cluster_tier_dict[key_cluster]["0"].values
-        df1 = total_loads_cluster_tier_dict[key_cluster]["1"].values
-        df2 = total_loads_cluster_tier_dict[key_cluster]["2"].values
-        df3 = total_loads_cluster_tier_dict[key_cluster]["3"].values
-        df4 = total_loads_cluster_tier_dict[key_cluster]["4"].values
-        df5 = total_loads_cluster_tier_dict[key_cluster]["5"].values
-
-        total_load = pd.DataFrame(
-            df0 + df1 + df2 + df3 + df4 + df5, columns=[f"bus_{k}"]
-        )
-        total_loads_cluster[f"bus_{k}"] = total_load
+    tot_result_dict = {}
+    for key in result_dict:
+        nome_dataframe = f"{key}"
+        load = result_dict[key]
+        load_tot = pd.DataFrame(load.sum(axis=1))
+        load_tot.rename(columns={0: key}, inplace=True)
+        tot_result_dict[nome_dataframe] = load_tot
 
     tot_loads_df = pd.DataFrame()
-    for key, cluster_load in total_loads_cluster.items():
+    for key, cluster_load in tot_result_dict.items():
         tot_loads_df = pd.concat([tot_loads_df, cluster_load], axis=1)
 
     date_range = pd.date_range(start="2013-01-01", end="2013-12-31", freq="D")
@@ -575,3 +534,6 @@ if __name__ == "__main__":
         snakemake.output["electric_load"],
         tier_percent,
     )
+
+    print("fino a qui tutto bene")
+    print("fino a qui tutto bene")
